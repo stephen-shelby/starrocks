@@ -18,6 +18,7 @@
 #include "exec/pipeline/exchange/shuffler.h"
 #include "exprs/expr_context.h"
 
+
 namespace starrocks::pipeline {
 
 Status PartitionExchanger::Partitioner::partition_chunk(const vectorized::ChunkPtr& chunk,
@@ -81,6 +82,17 @@ PartitionExchanger::PartitionExchanger(const std::shared_ptr<LocalExchangeMemory
     }
 }
 
+LakePartitionExchanger::LakePartitionExchanger(const std::shared_ptr<LocalExchangeMemoryManager>& memory_manager,
+                                       LocalExchangeSourceOperatorFactory* source, const TPartitionType::type part_type,
+                                       const std::vector<ExprContext*>& partition_expr_ctxs, const size_t num_sinks)
+        : LocalExchanger(strings::Substitute("Partition($0)", to_string(part_type)), memory_manager, source),
+        _source(source), _part_type(part_type), _partition_expr_ctxs(partition_expr_ctxs) {
+    _channel_partitions_columns.reserve(num_sinks);
+    for (int i = 0; i < num_sinks; ++i) {
+        _channel_partitions_columns.emplace_back(_partition_expr_ctxs.size());
+    }
+}
+
 Status PartitionExchanger::accept(const vectorized::ChunkPtr& chunk, const int32_t sink_driver_sequence) {
     size_t num_rows = chunk->num_rows();
     if (num_rows == 0) {
@@ -126,6 +138,45 @@ Status PassthroughExchanger::accept(const vectorized::ChunkPtr& chunk, const int
 
     return Status::OK();
 }
+
+Status LakePartitionExchanger::accept(const vectorized::ChunkPtr& chunk, const int32_t sink_driver_sequence) {
+    size_t num_rows = chunk->num_rows();
+    size_t num_partition = _source->get_sources().size();
+
+    if (num_rows == 0) {
+        return Status::OK();
+    }
+
+    auto& _partitions_columns = _channel_partitions_columns[sink_driver_sequence];
+    for (size_t i = 0; i < _partitions_columns.size(); ++i) {
+        ASSIGN_OR_RETURN(_partitions_columns[i], _partition_expr_ctxs[i]->evaluate(chunk.get()))
+        DCHECK(_partitions_columns[i] != nullptr);
+    }
+
+    Partition2RowIndexes partition_map;
+    for (int i = 0; i < num_rows; ++i) {
+        auto partition_key = std::make_shared<LakePartitionKey>(std::make_shared<vectorized::Columns>(_partitions_columns), i);
+        if (partition_map.find(partition_key) == partition_map.end()) {
+            partition_map.emplace(std::move(partition_key), std::make_shared<std::vector<uint32_t>>(1, i));
+        } else {
+            partition_map.at(partition_key)->emplace_back(i);
+        }
+    }
+
+    for (auto& i : partition_map) {
+        std::shared_ptr<std::vector<uint32_t>> indexes = i.second;
+        std::vector<uint32_t> hash_values(indexes->at(0) + 1, HashUtil::FNV_SEED);
+        for (const vectorized::ColumnPtr& column : _partitions_columns) {
+            column->fnv_hash(&hash_values[0], indexes->at(0), indexes->at(0) + 1);
+        }
+        uint32_t shuffle_channel_id = hash_values[indexes->at(0)] % num_partition;
+        RETURN_IF_ERROR(_source->get_sources()[shuffle_channel_id]->add_chunk(
+                chunk, std::move(indexes), 0, indexes->size(), _partitions_columns, _partition_expr_ctxs));
+    }
+
+    return Status::OK();
+}
+
 
 bool LocalExchanger::need_input() const {
     return !_memory_manager->is_full() && !is_all_sources_finished();

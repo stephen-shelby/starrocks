@@ -19,9 +19,10 @@
 
 #include "column/vectorized_fwd.h"
 #include "exec/pipeline/exchange/local_exchange_memory_manager.h"
-#include "exec/pipeline/exchange/local_exchange_source_operator.h"
 #include "exec/pipeline/exchange/shuffler.h"
 #include "exprs/expr_context.h"
+#include "exec/vectorized/tablet_info.h"
+#include "exec/pipeline/exchange/local_exchange_source_operator.h"
 
 namespace starrocks {
 class ExprContext;
@@ -126,6 +127,26 @@ private:
     // The sink_driver_sequence-th local sink operator exclusively uses the sink_driver_sequence-th partitioner.
     // TODO(lzh): limit the size of _partitioners, because it will cost too much memory when dop is high.
     std::vector<Partitioner> _partitioners;
+};
+
+
+// Exchange the local data for shuffle
+class LakePartitionExchanger final : public LocalExchanger {
+using Partition2RowIndexes = std::map<std::shared_ptr<LakePartitionKey>, std::shared_ptr<std::vector<uint32_t>>, LakePartitionKeyComparator>;
+
+public:
+    LakePartitionExchanger(const std::shared_ptr<LocalExchangeMemoryManager>& memory_manager,
+                       LocalExchangeSourceOperatorFactory* source, const TPartitionType::type part_type,
+                       const std::vector<ExprContext*>& _partition_expr_ctxs, size_t num_sinks);
+
+
+    Status accept(const vectorized::ChunkPtr& chunk, int32_t sink_driver_sequence) override;
+
+private:
+    LocalExchangeSourceOperatorFactory* _source;
+    const TPartitionType::type _part_type;
+    const std::vector<ExprContext*> _partition_expr_ctxs;
+    std::vector<vectorized::Columns> _channel_partitions_columns;
 };
 
 // Exchange the local data for broadcast
