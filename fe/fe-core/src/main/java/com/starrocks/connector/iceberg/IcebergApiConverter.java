@@ -33,7 +33,6 @@ import com.starrocks.thrift.TIcebergSchema;
 import com.starrocks.thrift.TIcebergSchemaField;
 import org.apache.iceberg.FileFormat;
 import org.apache.iceberg.Metrics;
-import org.apache.iceberg.PartitionData;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.Table;

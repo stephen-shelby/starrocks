@@ -2417,11 +2417,19 @@ public class PlanFragmentBuilder {
             hashJoinNode.setLocalHashBucket(true);
             hashJoinNode.setPartitionExprs(removeFragment.getDataPartition().getPartitionExprs());
             TPartitionType partitionType = TPartitionType.BUCKET_SHUFFLE_HASH_PARTITIONED;
+            List<Integer> icebergBucketModulus = new ArrayList<>();
             if (hasIcebergScanNode(stayFragment.getPlanRoot())) {
                 partitionType = TPartitionType.ICEBERG_BUCKET_SHUFFLE_HASH_PARTITIONED;
+                IcebergScanNode icebergScanNode = getIcebergScanNode(stayFragment.getPlanRoot());
+                icebergBucketModulus = icebergScanNode.getSrIcebergTable().getBucketModulus();
             }
-            removeFragment.getChild(0).setOutputPartition(new DataPartition(partitionType,
-                    removeFragment.getDataPartition().getPartitionExprs()));
+
+            DataPartition dataPartition = new DataPartition(partitionType,
+                    removeFragment.getDataPartition().getPartitionExprs());
+            if (!icebergBucketModulus.isEmpty()) {
+                dataPartition.setBucketModulus(icebergBucketModulus);
+            }
+            removeFragment.getChild(0).setOutputPartition(dataPartition);
 
             // Currently, we always generate new fragment for PhysicalDistribution.
             // So we need to remove exchange node only fragment for Join.
@@ -2446,6 +2454,18 @@ public class PlanFragmentBuilder {
                 }
             }
             return false;
+        }
+
+        IcebergScanNode getIcebergScanNode(PlanNode node) {
+            if (node instanceof IcebergScanNode) {
+                return (IcebergScanNode) node;
+            }
+            for (PlanNode child : node.getChildren()) {
+                if (getIcebergScanNode(child) != null) {
+                    return getIcebergScanNode(child);
+                }
+            }
+            return null;
         }
 
         public PlanFragment computeShuffleHashBucketPlanFragment(ExecPlan context,

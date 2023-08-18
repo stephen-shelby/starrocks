@@ -188,7 +188,8 @@ public class IcebergBucketBackendSelector implements BackendSelector {
 
         // update statistic
         long addedScans = scanRangeLocations.scan_range.hdfs_scan_range.length;
-        assignedScansPerComputeNode.put(address.hostname, assignedScansPerComputeNode.get(address.hostname) + addedScans);
+        assignedScansPerComputeNode.put(address.hostname,
+                assignedScansPerComputeNode.getOrDefault(address.hostname, 0L) + addedScans);
         assignedScansPerBucket.put(bucketId, assignedScansPerBucket.get(bucketId) + addedScans);
     }
 

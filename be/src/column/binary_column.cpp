@@ -577,6 +577,14 @@ void BinaryColumnBase<T>::fnv_hash(uint32_t* hashes, uint32_t from, uint32_t to)
 }
 
 template <typename T>
+void BinaryColumnBase<T>::murmur_hash3_x86_32(uint32_t *hashes, uint32_t from, uint32_t to) const {
+    for (uint32_t i = from; i < to; ++i) {
+        hashes[i] = HashUtil::murmur_hash3_32(_bytes.data() + _offsets[i],
+                                       static_cast<uint32_t>(_offsets[i + 1] - _offsets[i]), 0) & std::numeric_limits<int>::max();
+    }
+}
+
+template <typename T>
 void BinaryColumnBase<T>::crc32_hash(uint32_t* hashes, uint32_t from, uint32_t to) const {
     // keep hash if _bytes is empty
     for (uint32_t i = from; i < to && !_bytes.empty(); ++i) {

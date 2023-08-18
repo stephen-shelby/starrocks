@@ -118,6 +118,7 @@ public class DataStreamSink extends DataSink {
             tStreamSink.setOutput_columns(outputColumnIds);
         }
         result.setStream_sink(tStreamSink);
+
         return result;
     }
 

@@ -30,21 +30,27 @@ public:
               _num_shuffles_per_channel(num_shuffles_per_channel) {
         if (_part_type == TPartitionType::HASH_PARTITIONED && !compatibility) {
             if (is_two_level_shuffle) {
+                LOG(ERROR) << "111111111111";
                 _exchange_shuffle = &Shuffler::exchange_shuffle<true, ReduceOp>;
             } else {
+                LOG(ERROR) << "111111111111";
                 _exchange_shuffle = &Shuffler::exchange_shuffle<false, ReduceOp>;
             }
         } else {
             if (is_two_level_shuffle) {
+                LOG(ERROR) << "111111111111";
                 _exchange_shuffle = &Shuffler::exchange_shuffle<true, ModuloOp>;
             } else {
+                LOG(ERROR) << "111111111111";
                 _exchange_shuffle = &Shuffler::exchange_shuffle<false, ModuloOp>;
             }
         }
 
         if (_part_type == TPartitionType::HASH_PARTITIONED && !compatibility) {
+            LOG(ERROR) << "111111111111";
             _local_exchange_shuffle = &Shuffler::local_exchange_shuffle<ReduceOp>;
         } else {
+            LOG(ERROR) << "111111111111";
             _local_exchange_shuffle = &Shuffler::local_exchange_shuffle<ModuloOp>;
         }
     }

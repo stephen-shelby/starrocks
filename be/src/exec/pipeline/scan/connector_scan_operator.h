@@ -47,7 +47,8 @@ public:
     BalancedChunkBuffer& get_chunk_buffer() { return _chunk_buffer; }
     ActiveInputSet& get_active_inputs() { return _active_inputs; }
 
-    TPartitionType::type partition_type() const override { return TPartitionType::BUCKET_SHUFFLE_HASH_PARTITIONED; }
+    TPartitionType::type partition_type() const override { return TPartitionType::ICEBERG_BUCKET_SHUFFLE_HASH_PARTITIONED; }
+
     const std::vector<ExprContext*>& partition_exprs() const override;
     void set_estimated_mem_usage_per_chunk_source(int64_t mem_usage);
     void set_scan_mem_limit(int64_t mem_limit);
