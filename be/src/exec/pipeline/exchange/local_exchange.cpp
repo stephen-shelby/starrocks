@@ -84,12 +84,17 @@ Status ShufflePartitioner::shuffle_channel_ids(const ChunkPtr& chunk, int32_t nu
         for (const ColumnPtr& column : _partitions_columns) {
             column->fnv_hash(&_hash_values[0], 0, num_rows);
         }
-    } else {
+    } else if (_part_type == TPartitionType::BUCKET_SHUFFLE_HASH_PARTITIONED) {
         // The data distribution was calculated using CRC32_HASH,
         // and bucket shuffle need to use the same hash function when sending data
         _hash_values.assign(num_rows, 0);
         for (const ColumnPtr& column : _partitions_columns) {
             column->crc32_hash(&_hash_values[0], 0, num_rows);
+        }
+    } else {
+        _hash_values.assign(num_rows, 0);
+        for (const ColumnPtr& column : _partitions_columns) {
+            column->murmur_hash3_x86_32(&_hash_values[0], 0, num_rows);
         }
     }
 

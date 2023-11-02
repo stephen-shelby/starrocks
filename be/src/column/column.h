@@ -363,6 +363,8 @@ public:
 
     virtual void fnv_hash_at(uint32_t* seed, uint32_t idx) const { fnv_hash(seed - idx, idx, idx + 1); }
 
+    virtual void murmur_hash3_x86_32(uint32_t* hash, uint32_t from, uint32_t to) const { };
+
     virtual int64_t xor_checksum(uint32_t from, uint32_t to) const = 0;
 
     // Push one row to MysqlRowBuffer

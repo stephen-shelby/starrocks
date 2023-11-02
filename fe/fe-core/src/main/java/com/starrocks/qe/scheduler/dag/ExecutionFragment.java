@@ -20,7 +20,6 @@ import com.google.common.collect.Maps;
 import com.starrocks.common.util.DebugUtil;
 import com.starrocks.planner.ExchangeNode;
 import com.starrocks.planner.JoinNode;
-import com.starrocks.planner.OlapScanNode;
 import com.starrocks.planner.PlanFragment;
 import com.starrocks.planner.PlanFragmentId;
 import com.starrocks.planner.PlanNode;
@@ -161,7 +160,7 @@ public class ExecutionFragment {
         return colocatedAssignment;
     }
 
-    public ColocatedBackendSelector.Assignment getOrCreateColocatedAssignment(OlapScanNode scanNode) {
+    public ColocatedBackendSelector.Assignment getOrCreateColocatedAssignment(ScanNode scanNode) {
         if (colocatedAssignment == null) {
             colocatedAssignment = new ColocatedBackendSelector.Assignment(scanNode);
         }

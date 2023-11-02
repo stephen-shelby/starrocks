@@ -245,6 +245,23 @@ void FixedLengthColumnBase<T>::crc32_hash(uint32_t* hash, uint32_t from, uint32_
 }
 
 template <typename T>
+void FixedLengthColumnBase<T>::murmur_hash3_x86_32(uint32_t* hash, uint32_t from, uint32_t to) const {
+    for (uint32_t i = from; i < to; ++i) {
+        if constexpr (IsDate<T> || IsTimestamp<T>) {
+            std::string str = _data[i].to_string();
+            hash[i] = HashUtil::murmur_hash3_32(str.data(), static_cast<int32_t>(str.size()), 0) & std::numeric_limits<int>::max();
+        } else if constexpr (IsDecimal<T>) {
+            int64_t int_val = _data[i].int_value();
+            int32_t frac_val = _data[i].frac_value();
+            uint32_t seed = HashUtil::murmur_hash3_32(&int_val, sizeof(int_val), 0);
+            hash[i] = HashUtil::murmur_hash3_32(&frac_val, sizeof(frac_val), seed) & std::numeric_limits<int>::max();
+        } else {
+            hash[i] = HashUtil::murmur_hash3_32(&_data[i], sizeof(ValueType), 0) & std::numeric_limits<int>::max();
+        }
+    }
+}
+
+template <typename T>
 int64_t FixedLengthColumnBase<T>::xor_checksum(uint32_t from, uint32_t to) const {
     int64_t xor_checksum = 0;
     if constexpr (IsDate<T>) {

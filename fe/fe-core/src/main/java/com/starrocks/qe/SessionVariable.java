@@ -338,6 +338,8 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public static final String ENABLE_READ_ICEBERG_PUFFIN_NDV = "enable_read_iceberg_puffin_ndv";
 
+    public static final String ENABLE_ICEBERG_BUCKET_OPTIMIZE = "enable_iceberg_bucket_optimize";
+
     public static final String ENABLE_ICEBERG_COLUMN_STATISTICS = "enable_iceberg_column_statistics";
 
     public static final String ENABLE_HIVE_COLUMN_STATS = "enable_hive_column_stats";
@@ -1430,6 +1432,9 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     @VarAttr(name = ENABLE_READ_ICEBERG_PUFFIN_NDV)
     private boolean enableReadIcebergPuffinNdv = true;
 
+    @VariableMgr.VarAttr(name = ENABLE_ICEBERG_BUCKET_OPTIMIZE)
+    private boolean enableIcebergBucketOptimize = true;
+
     @VarAttr(name = ENABLE_ICEBERG_COLUMN_STATISTICS)
     private boolean enableIcebergColumnStatistics = true;
 
@@ -1442,6 +1447,10 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public void setEnablePruneIcebergManifest(boolean enablePruneIcebergManifest) {
         this.enablePruneIcebergManifest = enablePruneIcebergManifest;
+    }
+
+    public boolean enableIcebergBucketOptimize() {
+        return enableIcebergBucketOptimize;
     }
 
     public boolean enableReadIcebergPuffinNdv() {

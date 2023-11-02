@@ -207,6 +207,11 @@ public class IcebergTable extends Table {
         return getNativeTable().spec().fields().stream().anyMatch(field -> field.transform().isVoid());
     }
 
+    public List<Integer> getBucketModulus() {
+        return getBucketSourceIdWithBucketNum(getNativeTable().spec()).stream()
+                .map(pair -> pair.second)
+                .collect(Collectors.toList());
+    }
     public boolean hasBucketProperties() {
         PartitionSpec spec = getNativeTable().spec();
         return spec.isPartitioned() && Partitioning.hasBucketField(spec);

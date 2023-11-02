@@ -19,7 +19,9 @@ import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.starrocks.common.UserException;
+import com.starrocks.planner.IcebergScanNode;
 import com.starrocks.planner.OlapScanNode;
+import com.starrocks.planner.ScanNode;
 import com.starrocks.qe.scheduler.WorkerProvider;
 import com.starrocks.thrift.TScanRangeLocation;
 import com.starrocks.thrift.TScanRangeLocations;
@@ -145,15 +147,20 @@ public class ColocatedBackendSelector implements BackendSelector {
         private final Map<Long, Integer> backendIdToBucketCount = Maps.newHashMap();
         private final int bucketNum;
 
-        public Assignment(OlapScanNode scanNode) {
-            int curBucketNum = scanNode.getOlapTable().getDefaultDistributionInfo().getBucketNum();
-            if (scanNode.getSelectedPartitionIds().size() <= 1) {
-                for (Long pid : scanNode.getSelectedPartitionIds()) {
-                    curBucketNum = scanNode.getOlapTable().getPartition(pid).getDistributionInfo().getBucketNum();
+        public Assignment(ScanNode scanNode) {
+            if (scanNode instanceof OlapScanNode) {
+                OlapScanNode olapScanNode = (OlapScanNode) scanNode;
+                int curBucketNum = olapScanNode.getOlapTable().getDefaultDistributionInfo().getBucketNum();
+                if (olapScanNode.getSelectedPartitionIds().size() <= 1) {
+                    for (Long pid : olapScanNode.getSelectedPartitionIds()) {
+                        curBucketNum = olapScanNode.getOlapTable().getPartition(pid).getDistributionInfo().getBucketNum();
+                    }
                 }
-            }
 
-            this.bucketNum = curBucketNum;
+                this.bucketNum = curBucketNum;
+            } else {
+                this.bucketNum = ((IcebergScanNode) scanNode).getTransformedBucketSize();
+            }
         }
 
         public Map<Integer, Long> getSeqToWorkerId() {

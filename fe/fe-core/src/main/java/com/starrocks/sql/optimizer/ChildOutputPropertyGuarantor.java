@@ -18,6 +18,7 @@ package com.starrocks.sql.optimizer;
 import com.google.common.collect.Lists;
 import com.starrocks.analysis.JoinOperator;
 import com.starrocks.catalog.ColocateTableIndex;
+import com.starrocks.catalog.IcebergTable;
 import com.starrocks.common.Pair;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
@@ -26,6 +27,7 @@ import com.starrocks.sql.optimizer.base.DistributionProperty;
 import com.starrocks.sql.optimizer.base.DistributionSpec;
 import com.starrocks.sql.optimizer.base.HashDistributionDesc;
 import com.starrocks.sql.optimizer.base.HashDistributionSpec;
+import com.starrocks.sql.optimizer.base.IcebergDistributionDesc;
 import com.starrocks.sql.optimizer.base.PhysicalPropertySet;
 import com.starrocks.sql.optimizer.cost.CostModel;
 import com.starrocks.sql.optimizer.operator.Operator;
@@ -428,22 +430,22 @@ public class ChildOutputPropertyGuarantor extends PropertyDeriverBase<Void, Expr
                             rightChild, rightChildOutputProperty);
                 }
                 return visitOperator(node, context);
+            } else if (leftDistributionDesc.isIcebergLocal() && rightDistributionDesc.isIcebergLocal()) {
+                // iceberg colocate join
+                if (!canColocateJoinForIcebergTable(leftDistributionSpec, rightDistributionSpec, leftShuffleColumns,
+                        rightShuffleColumns)) {
+                    enforceChildShuffleDistribution(leftShuffleColumns, leftChild, leftChildOutputProperty, 0);
+                    enforceChildShuffleDistribution(rightShuffleColumns, rightChild, rightChildOutputProperty, 1);
+                }
+                return visitOperator(node, context);
+            } else if (leftDistributionDesc.isIcebergLocal() && rightDistributionDesc.isShuffle()) {
+                // iceberg bucket join
+                transToBucketShuffleJoin(leftDistributionSpec, leftShuffleColumns, rightShuffleColumns);
+                return visitOperator(node, context);
             } else {
                 //noinspection ConstantConditions
                 checkState(false, "Children output property distribution error");
             }
-        } else if (leftDistributionDesc.isIcebergLocal() && rightDistributionDesc.isIcebergLocal()) {
-            // iceberg colocate join
-            if (!canColocateJoinForIcebergTable(leftDistributionSpec, rightDistributionSpec, leftShuffleColumns,
-                    rightShuffleColumns)) {
-                enforceChildShuffleDistribution(leftShuffleColumns, leftChild, leftChildOutputProperty, 0);
-                enforceChildShuffleDistribution(rightShuffleColumns, rightChild, rightChildOutputProperty, 1);
-            }
-            return visitOperator(node, context);
-        } else if (leftDistributionDesc.isIcebergLocal() && rightDistributionDesc.isShuffle()) {
-            // iceberg bucket join
-            transToBucketShuffleJoin(leftDistributionSpec, leftShuffleColumns, rightShuffleColumns);
-            return visitOperator(node, context);
         } else {
             checkState(false, "Children output property distribution error");
         }
