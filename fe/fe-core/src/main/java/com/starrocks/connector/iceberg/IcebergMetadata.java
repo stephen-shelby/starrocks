@@ -376,6 +376,8 @@ public class IcebergMetadata implements ConnectorMetadata {
             scan = scan.filter(icebergPredicate);
         }
 
+        scan = scan.option("use_sr", "true");
+
         CloseableIterable<FileScanTask> fileScanTaskIterable = TableScanUtil.splitFiles(
                 scan.planFiles(), scan.targetSplitSize());
         CloseableIterator<FileScanTask> fileScanTaskIterator = fileScanTaskIterable.iterator();
