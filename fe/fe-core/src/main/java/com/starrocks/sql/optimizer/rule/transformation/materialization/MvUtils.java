@@ -127,6 +127,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -1187,6 +1188,32 @@ public class MvUtils {
                 collectViewScanOperator(input, viewScanOperators);
             }
         }
+    }
+
+    public static AtomicInteger collectNodesSum(OptExpression tree, Long sumNodes) {
+        AtomicInteger sumnode = new AtomicInteger();
+        collectNodes(tree, sumnode);
+        return sumnode;
+    }
+
+    public static void collectNodes(OptExpression tree, AtomicInteger sumNodes) {
+        for (OptExpression input : tree.getInputs()) {
+            collectNodes(input, sumNodes);
+        }
+        sumNodes.incrementAndGet();
+    }
+
+    public static AtomicInteger collectLogicalPlan(LogicalPlan tree) {
+        AtomicInteger sumnode = new AtomicInteger();
+        collectLogicalPlan(tree.getRoot(), sumnode);
+        return sumnode;
+    }
+
+    public static void collectLogicalPlan(OptExpression tree, AtomicInteger sumNodes) {
+        for (OptExpression input : tree.getInputs()) {
+            collectLogicalPlan(input, sumNodes);
+        }
+        sumNodes.incrementAndGet();
     }
 
     public static OptExpression replaceLogicalViewScanOperator(OptExpression queryExpression) {

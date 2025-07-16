@@ -62,8 +62,9 @@ public class CTEPlanTest extends PlanTestBase {
     @Test
     public void testMultiFlatCTE() throws Exception {
         String sql = "with x0 as (select * from t0), x1 as (select * from t1) " +
-                "select * from (select * from x0 union all select * from x1 union all select * from x0) tt;";
+                "select * from (select * from x0 union all select * from x1 union all select * from x0) tt where tt.v1 > 1;";
         String plan = getFragmentPlan(sql);
+
         Assertions.assertTrue(plan.contains("MultiCastDataSinks\n" +
                 "  STREAM DATA SINK\n" +
                 "    EXCHANGE ID: 02\n" +

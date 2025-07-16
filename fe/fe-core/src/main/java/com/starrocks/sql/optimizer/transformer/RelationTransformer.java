@@ -137,6 +137,7 @@ import com.starrocks.sql.optimizer.operator.scalar.SubqueryOperator;
 import com.starrocks.sql.optimizer.operator.stream.LogicalBinlogScanOperator;
 import com.starrocks.sql.optimizer.rewrite.ScalarOperatorRewriter;
 import com.starrocks.sql.optimizer.rewrite.scalar.ReduceCastRule;
+import com.starrocks.sql.optimizer.rule.transformation.materialization.MvUtils;
 import com.starrocks.sql.optimizer.rule.transformation.materialization.rule.TextMatchBasedRewriteRule;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.tuple.Triple;
@@ -150,6 +151,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -802,9 +804,17 @@ public class RelationTransformer implements AstVisitor<LogicalPlan, ExpressionMa
         LogicalPlan childPlan = transform(node.getCteQueryStatement().getQueryRelation());
         Map<ColumnRefOperator, ColumnRefOperator> cteOutputColumnRefMap = checkCtePlanOutput(cteId, childPlan, node);
         LogicalCTEConsumeOperator consume = new LogicalCTEConsumeOperator(cteId, cteOutputColumnRefMap);
-        OptExprBuilder consumeBuilder = new OptExprBuilder(consume, Lists.newArrayList(childPlan.getRootBuilder()),
-                new ExpressionMapping(node.getScope(), childPlan.getOutputColumn(),
-                        childPlan.getRootBuilder().getColumnRefToConstOperators()));
+        AtomicInteger nodeSum = MvUtils.collectLogicalPlan(childPlan);
+        OptExprBuilder consumeBuilder;
+        if (nodeSum.get() < 1000) {
+            consumeBuilder = new OptExprBuilder(consume, Lists.newArrayList(childPlan.getRootBuilder()),
+                    new ExpressionMapping(node.getScope(), childPlan.getOutputColumn(),
+                            childPlan.getRootBuilder().getColumnRefToConstOperators()));
+        } else {
+            consumeBuilder = new OptExprBuilder(consume, List.of(),
+                    new ExpressionMapping(node.getScope(), childPlan.getOutputColumn(),
+                            childPlan.getRootBuilder().getColumnRefToConstOperators()));
+        }
 
         return new LogicalPlan(consumeBuilder, childPlan.getOutputColumn(), List.of());
     }
