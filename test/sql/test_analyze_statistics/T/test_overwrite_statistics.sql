@@ -59,3 +59,12 @@ insert overwrite test_overwrite_statistics.test_overwrite_with_sample select gen
 function: assert_explain_costs_contains("select * from test_overwrite_statistics.test_overwrite_with_sample;", "ESTIMATE")
 insert overwrite test_overwrite_statistics.test_overwrite_with_sample select generate_series from table(generate_series(1, 300000));
 function: assert_explain_costs_contains("select * from test_overwrite_statistics.test_overwrite_with_sample;", "ESTIMATE")
+
+drop stats test_overwrite_statistics.test_overwrite_stats_table;
+drop table test_overwrite_statistics.test_overwrite_stats_table;
+delete from _statistics_.column_statistics where table_name='test_overwrite_statistics.test_overwrite_stats_table';
+create table test_overwrite_stats_table (k1 int) properties("replication_num"="1");
+insert into test_overwrite_stats_table select generate_series from table(generate_series(1, 1000));
+insert overwrite test_overwrite_stats_table select generate_series from table(generate_series(10000, 20000));
+function: assert_explain_costs_contains("select * from test_overwrite_statistics.test_overwrite_stats_table;", "20000.0")
+
