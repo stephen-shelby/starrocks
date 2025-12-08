@@ -3205,15 +3205,13 @@ public class OlapTable extends Table {
         properties.put(PropertyAnalyzer.PROPERTIES_COMPRESSION, compressionTypeName);
 
         // unique constraint
-        String uniqueConstraint = tableProperties.get(PropertyAnalyzer.PROPERTIES_UNIQUE_CONSTRAINT);
-        if (!Strings.isNullOrEmpty(uniqueConstraint)) {
+        if (hasUniqueConstraints()) {
             properties.put(PropertyAnalyzer.PROPERTIES_UNIQUE_CONSTRAINT,
                     UniqueConstraint.getShowCreateTableConstraintDesc(getTableProperty().getUniqueConstraints(), this));
         }
 
         // foreign key constraint
-        String foreignKeyConstraint = tableProperties.get(PropertyAnalyzer.PROPERTIES_FOREIGN_KEY_CONSTRAINT);
-        if (!Strings.isNullOrEmpty(foreignKeyConstraint) && hasForeignKeyConstraints()) {
+        if (hasForeignKeyConstraints()) {
             properties.put(PropertyAnalyzer.PROPERTIES_FOREIGN_KEY_CONSTRAINT,
                     ForeignKeyConstraint.getShowCreateTableConstraintDesc(this, getForeignKeyConstraints()));
         }
