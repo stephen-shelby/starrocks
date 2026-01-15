@@ -35,6 +35,20 @@ public class JsonPathRewriteTest extends PlanTestBase {
         starRocksAssert.withTable("create table extend_predicate3( c1 int, c2 string) " +
                 "properties('replication_num'='1')");
 
+        // Regression table for testing JSON path rewrite with partition pruning (issue #67665).
+        // The partition column `ts` is NOT a distribution key, so partition pruning may move `ts` predicates
+        // into `prunedPartitionPredicates` and remove them from scan predicates.
+        starRocksAssert.withTable("CREATE TABLE json_partition_prune (\n" +
+                "  `company_id` varchar(256) NULL,\n" +
+                "  `ts` datetime NULL,\n" +
+                "  `company_metadata` json NULL\n" +
+                ") ENGINE=OLAP\n" +
+                "DUPLICATE KEY(`company_id`)\n" +
+                "PARTITION BY RANGE(`ts`)\n" +
+                "(PARTITION p20260108 VALUES [('2026-01-08 00:00:00'), ('2026-01-09 00:00:00')))\n" +
+                "DISTRIBUTED BY HASH(`company_id`) BUCKETS 1\n" +
+                "PROPERTIES('replication_num'='1');");
+
         FeConstants.USE_MOCK_DICT_MANAGER = true;
         connectContext.getSessionVariable().setEnableLowCardinalityOptimize(true);
         connectContext.getSessionVariable().setUseLowCardinalityOptimizeV2(true);
@@ -408,6 +422,35 @@ public class JsonPathRewriteTest extends PlanTestBase {
         } finally {
             starRocksAssert.dropTable("json_rename");
         }
+    }
+
+    /**
+     * Regression test for issue #67665: JSON path rewrite with partition pruning should not
+     * incorrectly prune partition columns that are referenced by prunedPartitionPredicates.
+     *
+     * When partition pruning extracts partition column predicates into `prunedPartitionPredicates`
+     * (especially when the partition column is not a distribution key), JsonPathRewriteRule must
+     * include those columns in the requiredColumnSet to avoid plan validation failures.
+     */
+    @Test
+    public void testJsonPathRewriteWithPrunedPartitionPredicates() throws Exception {
+        connectContext.getSessionVariable().setEnableLowCardinalityOptimize(false);
+        connectContext.getSessionVariable().setUseLowCardinalityOptimizeV2(false);
+
+        // This query uses json_query which gets normalized to get_json_string via PruneSubfieldRule,
+        // then rewritten to company_metadata.path by JsonPathRewriteRule.
+        // The WHERE clause has partition bounds that align with partition range, triggering
+        // partition pruning to move ts predicates into prunedPartitionPredicates.
+        String sql = "SELECT COALESCE(COALESCE(json_query(company_metadata, '$.path'), ''), '') AS k, " +
+                "COUNT(*) AS c FROM json_partition_prune " +
+                "WHERE ts >= TIMESTAMP('2026-01-08 00:00:00') AND ts < TIMESTAMP('2026-01-09 00:00:00') " +
+                "GROUP BY 1 LIMIT 50";
+
+        // Should not fail with "Invalid plan: Input dependency cols check failed"
+        String plan = getFragmentPlan(sql);
+
+        // Verify that JSON path rewrite was applied (company_metadata.path should appear in the plan)
+        assertContains(plan, "company_metadata.path");
     }
 }
 
