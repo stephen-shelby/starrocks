@@ -816,7 +816,11 @@ public class ExpressionStatisticCalculator {
                 return Optional.empty();
             }
 
-            ConstantOperator constOp = (ConstantOperator) (leftIsConst ? leftOp : rightOp);
+            Optional<ConstantOperator> constOpOpt = toConstantOperator(leftIsConst ? leftOp : rightOp);
+            if (constOpOpt.isEmpty()) {
+                return Optional.empty();
+            }
+            ConstantOperator constOp = constOpOpt.get();
             ColumnStatistic baseStats = leftIsConst ? rightStats : leftStats;
             Histogram baseHist = baseStats == null ? null : baseStats.getHistogram();
             if (baseHist == null || baseHist.getMCV() == null || baseHist.getMCV().isEmpty()) {
@@ -871,6 +875,16 @@ public class ExpressionStatisticCalculator {
             }
 
             return Optional.of(new Histogram(newBuckets, newMcv));
+        }
+
+        private Optional<ConstantOperator> toConstantOperator(ScalarOperator op) {
+            if (op == null || !op.isConstant() || op.isConstantNull()) {
+                return Optional.empty();
+            }
+            if (op instanceof ConstantOperator) {
+                return Optional.of((ConstantOperator) op);
+            }
+            return Optional.empty();
         }
 
         private Optional<BigInteger> parseFixedPointMcvKey(String mcvKey, Type targetType) {
