@@ -25,6 +25,7 @@ import com.google.common.collect.Sets;
 import com.starrocks.catalog.BenchmarkTable;
 import com.starrocks.catalog.Column;
 import com.starrocks.catalog.FileTable;
+import com.starrocks.catalog.FunctionSet;
 import com.starrocks.catalog.ListPartitionInfo;
 import com.starrocks.catalog.MaterializedView;
 import com.starrocks.catalog.OlapTable;
@@ -2144,30 +2145,93 @@ public class StatisticsCalculator extends OperatorVisitor<Void, ExpressionContex
     public Void visitLogicalAnalytic(LogicalWindowOperator node, ExpressionContext context) {
         PredicateColumnsMgr.getInstance().recordWindowPartitionBy(node.getPartitionExpressions(),
                 optimizerContext.getColumnRefFactory(), context.getOptExpression());
-        return computeAnalyticNode(context, node.getWindowCall());
+        return computeAnalyticNode(context, node.getPartitionExpressions(), node.getWindowCall());
     }
 
     @Override
     public Void visitPhysicalAnalytic(PhysicalWindowOperator node, ExpressionContext context) {
         PredicateColumnsMgr.getInstance().recordWindowPartitionBy(node.getPartitionExpressions(),
                 optimizerContext.getColumnRefFactory(), context.getOptExpression());
-        return computeAnalyticNode(context, node.getAnalyticCall());
+        return computeAnalyticNode(context, node.getPartitionExpressions(), node.getAnalyticCall());
     }
 
-    private Void computeAnalyticNode(ExpressionContext context, Map<ColumnRefOperator, CallOperator> analyticCall) {
+    private Void computeAnalyticNode(ExpressionContext context, List<ScalarOperator> partitionExpressions,
+                                     Map<ColumnRefOperator, CallOperator> analyticCall) {
         Preconditions.checkState(context.arity() == 1);
 
         Statistics.Builder builder = Statistics.builder();
         Statistics inputStatistics = context.getChildStatistics(0);
         builder.addColumnStatistics(inputStatistics.getColumnStatistics());
 
-        analyticCall.forEach((key, value) -> builder
-                .addColumnStatistic(key, ExpressionStatisticCalculator.calculate(value, inputStatistics)));
+        // A partition TopN below the window is a hard upper bound on the rank value, unlike the average
+        // partition size which may only drive the ndv. See estimateWindowCall.
+        double maxRank = partitionTopNLimitOf(context.getChildOperator(0));
+        analyticCall.forEach((key, value) -> builder.addColumnStatistic(key,
+                estimateWindowCall(value, inputStatistics, partitionExpressions, maxRank)));
 
         builder.setOutputRowCount(inputStatistics.getOutputRowCount());
 
         context.setStatistics(builder.build());
         return visitOperator(context.getOp(), context);
+    }
+
+    private static double partitionTopNLimitOf(Operator child) {
+        long partitionLimit = Operator.DEFAULT_LIMIT;
+        if (child instanceof LogicalTopNOperator topN) {
+            partitionLimit = topN.getPartitionLimit();
+        } else if (child instanceof PhysicalTopNOperator topN) {
+            partitionLimit = topN.getPartitionLimit();
+        }
+        return partitionLimit > 0 ? partitionLimit : Double.POSITIVE_INFINITY;
+    }
+
+    // row_number() restarts at 1 in every partition, so its value range is bounded by the size of one
+    // partition rather than by the input row count.
+    private static ColumnStatistic estimateWindowCall(CallOperator call, Statistics inputStatistics,
+                                                      List<ScalarOperator> partitionExpressions, double maxRank) {
+        if (!FunctionSet.ROW_NUMBER.equals(call.getFnName())) {
+            return ExpressionStatisticCalculator.calculate(call, inputStatistics);
+        }
+        double rowCount = inputStatistics.getOutputRowCount();
+        if (Double.isNaN(rowCount) || rowCount < 1) {
+            return ColumnStatistic.unknown();
+        }
+        ColumnStatistic.Builder builder = ColumnStatistic.builder()
+                .setMinValue(1)
+                .setNullsFraction(0)
+                .setAverageRowSize(call.getType().getTypeSize());
+
+        if (partitionExpressions.isEmpty()) {
+            // The whole input is a single partition: row_number() takes exactly the values 1..rowCount, each
+            // once, so both the ndv and the upper bound are exact rather than estimated.
+            return builder.setMaxValue(rowCount).setDistinctValuesCount(rowCount).build();
+        }
+
+        double partitionCount = estimatePartitionCount(partitionExpressions, inputStatistics);
+        if (Double.isNaN(partitionCount)) {
+            return ColumnStatistic.unknown();
+        }
+        // rowsPerPartition is an AVERAGE and may only drive the ndv: the largest partition can be far bigger,
+        // and pinning maxValue to the average would push a predicate like `rn = k` with k above the average
+        // outside the range, estimating zero rows. Only a partition TopN below us gives a real upper bound.
+        double rowsPerPartition = Math.max(1, rowCount / partitionCount);
+        return builder.setMaxValue(maxRank)
+                .setDistinctValuesCount(Math.min(rowsPerPartition, maxRank)).build();
+    }
+
+    // Returns NaN when the partition count cannot be derived; the caller then keeps the column unknown
+    // rather than pretending the input is a single partition.
+    private static double estimatePartitionCount(List<ScalarOperator> partitionExpressions,
+                                                 Statistics inputStatistics) {
+        List<ColumnRefOperator> partitionColumns = new ArrayList<>();
+        for (ScalarOperator expr : partitionExpressions) {
+            if (!(expr instanceof ColumnRefOperator column)
+                    || inputStatistics.getColumnStatistic(column).isUnknown()) {
+                return Double.NaN;
+            }
+            partitionColumns.add(column);
+        }
+        return computeGroupByStatistics(partitionColumns, inputStatistics, Maps.newHashMap());
     }
 
     public Statistics estimateStatistics(List<ScalarOperator> predicateList, Statistics statistics) {

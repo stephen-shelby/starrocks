@@ -1799,6 +1799,55 @@ public class DistributedEnvPlanWithCostTest extends DistributedEnvPlanTestBase {
                 + "  2:ANALYTIC");
     }
 
+    // lineitem has 600,000,000 rows and l_partkey has an ndv of 20,000,000, so a partition holds 30 rows
+    // on average. Without a PARTITION BY the whole input is one partition instead.
+    @Test
+    public void testRowNumberStatisticsWithoutPartitionBy() throws Exception {
+        // row_number() over () takes exactly the values 1..rowCount, so its ndv is the row count and
+        // grouping by it cannot reduce the row count at all.
+        String sql = "select k, count(*) from (select row_number() over (order by l_orderkey) - 1 as k "
+                + "from lineitem) t group by k";
+        assertContains(getVerboseExplain(sql), "AGGREGATE (update finalize)\n"
+                + "  |  aggregate: count[(*); args: ; result: BIGINT; args nullable: false; result nullable: false]\n"
+                + "  |  group by: [19: expr, BIGINT, true]\n"
+                + "  |  cardinality: 600000000");
+    }
+
+    @Test
+    public void testRowNumberStatisticsWithPartitionBy() throws Exception {
+        // A partition holds 30 rows on average, so the rank only ever takes 30 distinct values.
+        String sql = "select k, count(*) from (select row_number() over (partition by l_partkey "
+                + "order by l_shipdate) as k from lineitem) t group by k";
+        assertContains(getVerboseExplain(sql), "  |  group by: [18: row_number(), BIGINT, true]\n"
+                + "  |  cardinality: 30");
+    }
+
+    @Test
+    public void testRowNumberStatisticsDedup() throws Exception {
+        // The partition TopN already keeps a single row per l_partkey, so the residual `rn = 1` filter
+        // passes everything through and must not shrink the row count any further.
+        String sql = "select * from (select l_orderkey, l_partkey, row_number() over "
+                + "(partition by l_partkey order by l_shipdate) rn from lineitem) t where rn = 1";
+        String plan = getVerboseExplain(sql);
+        assertContains(plan, "PARTITION-TOP-N\n"
+                + "  |  partition by: [2: L_PARTKEY, INT, false] \n"
+                + "  |  partition limit: 1");
+        assertContains(plan, "  5:SELECT\n"
+                + "  |  predicates: 18: row_number() = 1\n"
+                + "  |  cardinality: 20000000");
+    }
+
+    @Test
+    public void testRowNumberStatisticsRankAboveAveragePartitionSize() throws Exception {
+        // 50 exceeds the average partition size of 30. The average may only drive the ndv -- a skewed
+        // partition can be far larger -- so the estimate must not collapse to a single row here.
+        String sql = "select * from (select l_orderkey, l_partkey, row_number() over "
+                + "(partition by l_partkey order by l_shipdate) rn from lineitem) t where rn = 50";
+        assertContains(getVerboseExplain(sql), "  5:SELECT\n"
+                + "  |  predicates: 18: row_number() = 50\n"
+                + "  |  cardinality: 20000000");
+    }
+
     @Test
     public void testPartitionRangeGen() throws Exception {
         String sql = "select * from lineitem_partition where L_SHIPDATE = cast(abs('19950101') as date);";
